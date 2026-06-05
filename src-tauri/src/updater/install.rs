@@ -20,6 +20,14 @@ use std::{
 
 const UPDATE_HELPER_PATH_ENV: &str = "FLORAL_NOTEPAPER_UPDATE_HELPER_PATH";
 const UPDATE_HELPER_MODE_ENV: &str = "FLORAL_NOTEPAPER_UPDATE_HELPER_MODE";
+
+macro_rules! debug_log {
+    ($($arg:tt)*) => {{
+        if cfg!(debug_assertions) {
+            eprintln!("[update:install] {}", format!($($arg)*));
+        }
+    }};
+}
 const HELPER_READY_TIMEOUT: Duration = Duration::from_secs(30);
 const HELPER_READY_POLL_INTERVAL: Duration = Duration::from_millis(100);
 
@@ -144,9 +152,22 @@ where
         paths: &UpdatePaths,
         current_state: UpdateStateDto,
     ) -> Result<UpdateInstallResult, AppError> {
+        debug_log!(
+            "开始安装 version={:?} mode={:?}",
+            current_state.latest_version,
+            self.helper_mode
+        );
         let request = match self.prepare_request(paths, &current_state) {
-            Ok(request) => request,
+            Ok(request) => {
+                debug_log!(
+                    "安装请求已准备 helper={} target={}",
+                    request.helper_path.display(),
+                    request.command.target_path.display()
+                );
+                request
+            }
             Err(error) => {
+                debug_log!("安装准备失败 code={}", error.code);
                 state::save(paths, &failed_state_without_request(&current_state, &error))?;
                 return Err(error);
             }
@@ -154,8 +175,14 @@ where
         let log_path_text = request.command.log_path.to_string_lossy().to_string();
         let install_mode = install_mode(self.helper_mode);
         let started_at = Utc::now();
+        debug_log!("启动 helper 进程 mode={:?}", self.helper_mode);
         match self.executor.execute(&request) {
             Ok(_) => {
+                debug_log!(
+                    "helper 已启动 mode={:?} log={}",
+                    self.helper_mode,
+                    log_path_text
+                );
                 if self.helper_mode == helper::UpdateHelperMode::Test {
                     state::save(
                         paths,
@@ -177,6 +204,7 @@ where
                     paths,
                     &scheduled_state(&current_state, &request, install_mode.clone(), started_at),
                 )?;
+                debug_log!("安装已调度，等待退出");
                 Ok(UpdateInstallResult {
                     status: UpdateStatus::InstallScheduled,
                     log_path: Some(log_path_text),
@@ -184,6 +212,7 @@ where
                 })
             }
             Err(error) => {
+                debug_log!("安装执行失败 code={}", error.code);
                 state::save(
                     paths,
                     &failed_state(&current_state, &request, install_mode, started_at, &error),

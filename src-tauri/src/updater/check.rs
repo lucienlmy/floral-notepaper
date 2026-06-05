@@ -26,7 +26,18 @@ const GITHUB_REPO_ENV: &str = "FLORAL_NOTEPAPER_UPDATE_GITHUB_REPO";
 const DEFAULT_GITHUB_REPO: &str = "Achilng/floral-notepaper";
 const MIRROR_CHYAN_API_BASE: &str = "https://mirrorchyan.com/api/resources";
 const MIRROR_CHYAN_RES_ID: &str = "floral";
+const MIRROR_CHYAN_RES_ID_OVERRIDE_ENV: &str = "FLORAL_NOTEPAPER_MIRROR_CHYAN_RES_ID";
 const MIRROR_CHYAN_USER_AGENT: &str = "floral_notepaper";
+
+fn mirror_chyan_res_id() -> &'static str {
+    if let Ok(value) = env::var(MIRROR_CHYAN_RES_ID_OVERRIDE_ENV) {
+        let trimmed = value.trim().to_string();
+        if !trimmed.is_empty() {
+            return Box::leak(trimmed.into_boxed_str());
+        }
+    }
+    MIRROR_CHYAN_RES_ID
+}
 
 macro_rules! debug_log {
     ($($arg:tt)*) => {{
@@ -512,6 +523,15 @@ fn mirror_chyan_arch_param(arch: &platform::Arch) -> &'static str {
     }
 }
 
+fn extract_filename_from_url(url: &str) -> Option<String> {
+    let path = url.split('?').next().unwrap_or(url);
+    let name = path.rsplit('/').next()?;
+    if name.is_empty() {
+        return None;
+    }
+    Some(name.to_string())
+}
+
 fn build_mirror_chyan_api_client() -> Result<Client, AppError> {
     Client::builder()
         .connect_timeout(Duration::from_secs(10))
@@ -549,10 +569,9 @@ fn call_mirror_chyan_api(
     arch: &str,
     cdk: Option<&str>,
 ) -> Result<MirrorChyanApiData, AppError> {
-    let mut url = reqwest::Url::parse(&format!(
-        "{MIRROR_CHYAN_API_BASE}/{MIRROR_CHYAN_RES_ID}/latest"
-    ))
-    .map_err(|e| errors::mirror_chyan_api_error(format!("URL 构建失败：{e}")))?;
+    let res_id = mirror_chyan_res_id();
+    let mut url = reqwest::Url::parse(&format!("{MIRROR_CHYAN_API_BASE}/{res_id}/latest"))
+        .map_err(|e| errors::mirror_chyan_api_error(format!("URL 构建失败：{e}")))?;
     url.query_pairs_mut()
         .append_pair("current_version", current_version)
         .append_pair("os", os)
@@ -637,6 +656,10 @@ fn check_mirror_chyan_api(
     }
 
     let mirror_chyan_asset_url = data.url;
+    let asset_name = mirror_chyan_asset_url
+        .as_deref()
+        .and_then(extract_filename_from_url)
+        .unwrap_or_else(|| format!("floral-notepaper_{version_str}_{os}_{arch}"));
     let has_url = mirror_chyan_asset_url.is_some();
     // MirrorChyan API does not provide asset SHA-256 checksums in its response,
     // so hash verification is explicitly disabled for MirrorChyan-sourced downloads.
@@ -650,7 +673,7 @@ fn check_mirror_chyan_api(
         normalized_version,
         release_notes: data.release_note.filter(|s| !s.trim().is_empty()),
         mandatory: false,
-        asset_name: format!("floral-notepaper_{version_str}_{os}_{arch}.zip"),
+        asset_name,
         asset_sha256: None,
         asset_size: 0,
         asset_url: mirror_chyan_asset_url.clone(),

@@ -27,6 +27,14 @@ use std::{
     time::{Duration, Instant},
 };
 
+macro_rules! debug_log {
+    ($($arg:tt)*) => {{
+        if cfg!(debug_assertions) {
+            eprintln!("[update:download] {}", format!($($arg)*));
+        }
+    }};
+}
+
 const GITHUB_MANIFEST_PATH_ENV: &str = "FLORAL_NOTEPAPER_UPDATE_GITHUB_MANIFEST_PATH";
 const MAX_REDIRECTS: usize = 5;
 const PROGRESS_INTERVAL: Duration = Duration::from_millis(200);
@@ -108,16 +116,29 @@ impl UpdateDownloadService {
     where
         F: FnMut(UpdateDownloadProgressDto),
     {
+        debug_log!("开始下载 version={:?}", current_state.latest_version);
         if let Err(error) = self.current_platform().ensure_in_app_updates_supported() {
+            debug_log!("平台不支持下载 code={}", error.code);
             state::save(paths, &failed_state_without_plan(&current_state, &error))?;
             return Err(error);
         }
         let primary_source = selected_download_source(&current_state, source);
+        debug_log!("下载源={:?}", primary_source);
         let primary_plan =
             match self.resolve_plan_for_source(paths, &current_state, &primary_source) {
-                Ok(plan) => plan,
+                Ok(plan) => {
+                    debug_log!(
+                        "下载计划已解析 url={} source={:?} sha256_verification={}",
+                        plan.url,
+                        plan.source,
+                        plan.sha256_verification_enabled
+                    );
+                    plan
+                }
                 Err(error) => {
+                    debug_log!("下载计划解析失败 code={}", error.code);
                     if should_try_github_fallback(&primary_source, &error, &cancel_flag) {
+                        debug_log!("尝试 GitHub 回退下载");
                         match self.resolve_plan_for_source(
                             paths,
                             &current_state,
@@ -492,6 +513,12 @@ impl UpdateDownloadService {
             Ok((asset_path, computed_sha256)) => {
                 let asset_path_text = asset_path.to_string_lossy().to_string();
                 let sha256_to_store = plan.asset_sha256.clone().or(computed_sha256);
+                debug_log!(
+                    "下载完成 version={} path={} sha256={}",
+                    plan.version,
+                    asset_path_text,
+                    sha256_to_store.as_deref().unwrap_or("none")
+                );
                 let downloaded_state = UpdateStateDto {
                     status: UpdateStatus::Downloaded,
                     current_version: current_state.current_version.clone(),
@@ -536,12 +563,19 @@ impl UpdateDownloadService {
     where
         F: FnMut(UpdateDownloadProgressDto),
     {
+        debug_log!(
+            "执行下载计划 asset={} 大小={}",
+            plan.asset_name,
+            plan.asset_size
+        );
         if let Some(parent) = plan.final_path.parent() {
             fs::create_dir_all(parent)?;
         }
 
         if plan.final_path.exists() {
+            debug_log!("下载文件已存在，验证中 path={}", plan.final_path.display());
             if let Some(computed) = verify_existing_file(plan)? {
+                debug_log!("已存在文件验证通过，跳过下载");
                 emit_progress(progress_payload(
                     plan,
                     plan.asset_size,
@@ -565,11 +599,17 @@ impl UpdateDownloadService {
             match self.download_attempt(plan, &cancel_flag, &mut emit_progress) {
                 Ok(path) => return Ok(path),
                 Err(error) if should_retry(&error) && attempt < RETRY_DELAYS.len() => {
+                    debug_log!(
+                        "下载重试 attempt={} 延迟={:?}",
+                        attempt + 1,
+                        RETRY_DELAYS[attempt]
+                    );
                     let _ = remove_file_if_exists(&plan.part_path);
                     thread::sleep(RETRY_DELAYS[attempt]);
                     attempt += 1;
                 }
                 Err(error) => {
+                    debug_log!("下载失败 code={}", error.code);
                     let _ = remove_file_if_exists(&plan.part_path);
                     return Err(error);
                 }
@@ -594,7 +634,18 @@ impl UpdateDownloadService {
                 allow_insecure_localhost: self.allow_insecure_localhost,
             },
         )?;
+        // Resolve the actual filename from the final URL after redirects.
+        let final_path = resolved_final_path(plan, response.url());
         let content_length = response.content_length();
+        debug_log!(
+            "重定向后 url={} 文件={} Content-Length={:?}",
+            response.url(),
+            final_path
+                .file_name()
+                .and_then(|n| n.to_str())
+                .unwrap_or("?"),
+            content_length
+        );
         let expected_size = if plan.asset_size > 0 {
             if let Some(length) = content_length {
                 if length != plan.asset_size {
@@ -613,7 +664,11 @@ impl UpdateDownloadService {
 
         emit_progress(progress_payload(plan, 0, total_for_progress, 0));
 
-        let part_file = fs::File::create(&plan.part_path)?;
+        let part_path = part_path_for(&final_path);
+        if let Some(parent) = part_path.parent() {
+            fs::create_dir_all(parent)?;
+        }
+        let part_file = fs::File::create(&part_path)?;
         let mut writer = BufWriter::new(part_file);
         let mut hasher = Sha256::new();
         let started_at = Instant::now();
@@ -681,7 +736,12 @@ impl UpdateDownloadService {
             ));
         };
 
-        fs::rename(&plan.part_path, &plan.final_path)?;
+        if final_path != plan.final_path {
+            if let Some(parent) = final_path.parent() {
+                fs::create_dir_all(parent)?;
+            }
+        }
+        fs::rename(&part_path, &final_path)?;
         emit_progress(progress_payload(
             plan,
             downloaded_bytes,
@@ -689,7 +749,7 @@ impl UpdateDownloadService {
             progress_speed(downloaded_bytes, started_at),
         ));
 
-        Ok((plan.final_path.clone(), computed))
+        Ok((final_path, computed))
     }
 }
 
@@ -772,6 +832,7 @@ fn is_host_allowed(host: &str, allow_insecure_localhost: bool) -> bool {
     DOWNLOAD_HOST_ALLOWLIST
         .iter()
         .any(|allowed| host.eq_ignore_ascii_case(allowed))
+        || is_mirror_chyan_download_host(host)
         || (allow_insecure_localhost && is_localhost(host))
 }
 
@@ -834,11 +895,36 @@ fn sanitize_url(url: &Url) -> String {
     )
 }
 
+fn resolved_final_path(plan: &DownloadPlan, effective_url: &Url) -> PathBuf {
+    let filename = effective_url
+        .path_segments()
+        .and_then(|mut segments| segments.next_back())
+        .filter(|name| !name.is_empty())
+        .unwrap_or(&plan.asset_name);
+    plan.final_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(filename)
+}
+
+fn part_path_for(final_path: &Path) -> PathBuf {
+    let mut name = final_path
+        .file_name()
+        .and_then(|n| n.to_str())
+        .unwrap_or("download")
+        .to_string();
+    name.push_str(".part");
+    final_path
+        .parent()
+        .unwrap_or_else(|| Path::new("."))
+        .join(name)
+}
+
 fn build_http_client() -> Result<Client, AppError> {
     Client::builder()
         .connect_timeout(Duration::from_secs(15))
         .timeout(Duration::from_secs(120))
-        .redirect(Policy::none())
+        .redirect(Policy::limited(10))
         .build()
         .map_err(|error| {
             errors::app_error(

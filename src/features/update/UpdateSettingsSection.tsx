@@ -255,14 +255,16 @@ export function UpdateSettingsSection({
     downloadProgress?.percent ??
     (status?.status === "downloaded" ? 100 : status?.status === "downloading" ? 0 : null);
   const canDownload =
-    Boolean(status?.latestVersion && status?.assetName && status?.assetSize) &&
+    status?.latestVersion != null &&
+    status?.assetName != null &&
+    status?.assetSize != null &&
     status?.status !== "downloaded" &&
     status?.status !== "installScheduled" &&
     !isDownloading;
   const canInstall =
-    Boolean(
-      status?.latestVersion && status?.assetPath && status?.assetSha256 && status?.assetSize,
-    ) &&
+    status?.latestVersion != null &&
+    status?.assetPath != null &&
+    status?.assetSize != null &&
     (status?.status === "downloaded" ||
       status?.status === "installScheduled" ||
       status?.status === "failed") &&
@@ -739,7 +741,7 @@ function renderDownloadCard({
   const progressWidth = `${Math.max(0, Math.min(percent ?? 0, 100))}%`;
 
   return (
-    <div className="space-y-2 rounded-2xl border border-paper-deep/25 bg-paper-warm/40 px-3 py-3">
+    <div className="space-y-2 rounded-lg border border-paper-deep/25 bg-paper-warm/40 px-3 py-3">
       <div className="flex items-start justify-between gap-3">
         <div className="space-y-1">
           <p className="text-[11px] font-body text-ink-faint">
