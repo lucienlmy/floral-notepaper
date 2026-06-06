@@ -316,12 +316,9 @@ export function MainWindow({
   const [sidePanelContentVisible, setSidePanelContentVisible] = useState(
     Boolean(initialSettingsOpen && initialConfig),
   );
-  const [aboutUpdateReminder, setAboutUpdateReminder] = useState<AboutUpdateReminderState>(() => {
-    const initialReminder = createAboutUpdateReminderState(initialUpdateStatus ?? null);
-    return initialAboutUpdateLabelVisible
-      ? { ...initialReminder, showText: true }
-      : initialReminder;
-  });
+  const [aboutUpdateReminder, setAboutUpdateReminder] = useState<AboutUpdateReminderState>(() =>
+    createAboutUpdateReminderState(null),
+  );
   const [settingsConfig, setSettingsConfig] = useState<AppConfig | null>(initialConfig ?? null);
   const [savedNotesDir, setSavedNotesDir] = useState<string | null>(
     initialConfig?.notesDir ?? null,
@@ -369,7 +366,7 @@ export function MainWindow({
     () => externalFiles.find((f) => f.id === selectedId) ?? null,
     [externalFiles, selectedId],
   );
-  const updateStatusHydratedRef = useRef(initialUpdateStatus !== undefined);
+  const updateStatusHydratedRef = useRef(false);
 
   const isExternal = selectedExternalFile !== null;
 
@@ -1390,7 +1387,7 @@ export function MainWindow({
     markDirty,
     onEnsureNoteSaved: ensureNoteSaved,
     disabled: isExternal,
-    onError: setErrorMessage,
+    onError: showToast,
     t,
   });
 
@@ -1399,18 +1396,18 @@ export function MainWindow({
     try {
       const removed = await cleanUnusedImages(selectedId, content);
       if (removed.length > 0) {
-        setErrorMessage(
+        showToast(
           t("main.images.cleaned", {
             count: removed.length,
             defaultValue: "已清理 {{count}} 张图片",
           }),
+          "info",
         );
       } else {
-        setErrorMessage(t("main.images.cleanedNone", { defaultValue: "没有需要清理的图片" }));
+        showToast(t("main.images.cleanedNone", { defaultValue: "没有需要清理的图片" }), "info");
       }
-      setTimeout(() => setErrorMessage(null), 3000);
     } catch (error) {
-      setErrorMessage(getErrorMessage(error));
+      showToast(getErrorMessage(error));
     }
   };
 

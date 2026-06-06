@@ -334,7 +334,7 @@ export function NotePad({
           await reportInstallPreparation(event.payload.requestId, windowLabel, "ready");
         } catch (error) {
           setStatus("saveFailed");
-          setErrorMessage(getErrorMessage(error));
+          showToast(getErrorMessage(error));
           await reportInstallPreparation(
             event.payload.requestId,
             windowLabel,
@@ -385,7 +385,7 @@ export function NotePad({
     setContent,
     markDirty: () => setStatus("dirty"),
     onEnsureNoteSaved: ensureNoteSaved,
-    onError: setErrorMessage,
+    onError: showToast,
     t,
   });
 
