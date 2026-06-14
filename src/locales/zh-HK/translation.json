@@ -266,6 +266,7 @@
     "tileCtrlClose": "Ctrl+右鍵快速關閉磁貼",
     "tileRenderMarkdown": "磁貼渲染 Markdown",
     "renderHtmlMarkdown": "允許 HTML 標籤渲染",
+    "splitScrollSync": "分欄同步捲動",
     "title": "應用程式設定",
     "update": {
       "advanced": "進階",

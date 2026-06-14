@@ -74,6 +74,8 @@ pub struct AppConfig {
     pub tile_render_markdown: bool,
     #[serde(default)]
     pub render_html_markdown: bool,
+    #[serde(default = "default_split_scroll_sync")]
+    pub split_scroll_sync: bool,
     #[serde(default, skip_serializing_if = "Option::is_none")]
     pub surface_width: Option<u32>,
     #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -1070,6 +1072,7 @@ impl NoteStore {
             tile_ctrl_close: default_tile_ctrl_close(),
             tile_render_markdown: false,
             render_html_markdown: false,
+            split_scroll_sync: true,
             surface_width: None,
             surface_height: None,
             toggle_visibility_shortcut: default_toggle_visibility_shortcut(),
@@ -1638,6 +1641,10 @@ fn default_tile_ctrl_close() -> bool {
     true
 }
 
+fn default_split_scroll_sync() -> bool {
+    true
+}
+
 fn default_toggle_visibility_shortcut() -> String {
     String::new()
 }
@@ -1808,6 +1815,7 @@ mod tests {
             tile_ctrl_close: true,
             tile_render_markdown: false,
             render_html_markdown: false,
+            split_scroll_sync: true,
             surface_width: None,
             surface_height: None,
             toggle_visibility_shortcut: String::new(),

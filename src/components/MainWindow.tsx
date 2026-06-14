@@ -1707,13 +1707,14 @@ export function MainWindow({
     measureControllerRef.current?.abort();
   }, []);
 
+  const scrollSyncEnabled = settingsConfig?.splitScrollSync ?? true;
+
   const scheduleScrollMeasurement = useCallback(
     (delayMs: number) => {
-      if (viewMode !== "split") return;
+      if (viewMode !== "split" || !scrollSyncEnabled) return;
       if (!contentRef.current || !previewScrollRef.current) return;
 
-      // Clear stale offsets while layout and measurement settle.
-      // 布局和测量稳定前先清空旧偏移量。
+      // 布局和测量稳定前先清空旧偏移量
       blockOffsets.current = [];
       cancelScrollMeasurement();
 
@@ -1742,18 +1743,12 @@ export function MainWindow({
         runAfterLayout();
       }
     },
-    [cancelScrollMeasurement, content, viewMode],
+    [cancelScrollMeasurement, content, scrollSyncEnabled, viewMode],
   );
 
-  // Measure block offsets + tag preview DOM after content or layout-affecting changes.
-  // 内容或影响布局的变化后，测量块偏移量并标记预览 DOM。
-  // Note switch: measure via rAF (does not block first paint). / 切换笔记：通过 rAF 测量，不阻塞首帧渲染。
-  // 切换笔记：通过 rAF 测量，不阻塞首帧渲染。
-  // 切换笔记：通过 rAF 测量，不阻塞首帧渲染。
-  // Editing/layout changes: debounce to avoid N reflows during rapid updates.
-  // 编辑/布局变化：使用防抖，避免快速更新时反复触发重排。
+  // 切换笔记时通过 rAF 测量（不阻塞首帧渲染），编辑时 debounce 避免频繁重排
   useEffect(() => {
-    if (viewMode !== "split") {
+    if (viewMode !== "split" || !scrollSyncEnabled) {
       blockOffsets.current = [];
       cancelScrollMeasurement();
       return;
@@ -1769,6 +1764,7 @@ export function MainWindow({
   }, [
     cancelScrollMeasurement,
     content,
+    scrollSyncEnabled,
     scheduleScrollMeasurement,
     selectedId,
     settingsConfig?.fontSize,

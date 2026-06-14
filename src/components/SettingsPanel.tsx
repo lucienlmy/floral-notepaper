@@ -203,6 +203,11 @@ export function SettingsPanel({ config, onChange, onMigrateDataDir, onClose }: S
             checked={config.renderHtmlMarkdown}
             onChange={(checked) => setConfigValue("renderHtmlMarkdown", checked)}
           />
+          <ToggleRow
+            label={t("settings.splitScrollSync", { defaultValue: "分栏同步滚动" })}
+            checked={config.splitScrollSync ?? true}
+            onChange={(checked) => setConfigValue("splitScrollSync", checked)}
+          />
         </section>
 
         {/* 快捷键功能设置区域，与上方常规设置分开 */}

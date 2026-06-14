@@ -59,9 +59,7 @@ function parseBlocks(text: string): ParsedBlock[] {
     const line = lines[i];
     const trimmed = line.trim();
 
-    // Link reference definitions become invisible definition nodes in preview. / 链接引用定义在预览中会变成不可见的 definition 节点。
-    // 链接引用定义在预览中会变成不可见的 definition 节点。
-    // 链接引用定义在预览中会变成不可见的 definition 节点。
+    // 链接引用定义在预览中会变成不可见的 definition 节点，需跳过。
     if (isStandaloneLinkReferenceDefinition(line)) {
       i++;
       continue;
@@ -147,18 +145,7 @@ function parseBlocks(text: string): ParsedBlock[] {
   return blocks;
 }
 
-/**
- * Measure the textarea scrollTop offset where each block begins.
- * 使用 textarea 的 scrollTop 坐标测量每个块的起点。
- *
- * Uses one hidden mirror with block-start markers, avoiding repeated growing-prefix
- * textarea measurements for long documents.
- * 使用一个带块起点标记的隐藏镜像，避免长文档反复测量不断增长的 textarea 前缀。
- *
- * Pass an AbortSignal to cancel in-progress measurement; aborted callers may receive
- * a partial result and are expected to discard it.
- * 传入 AbortSignal 可取消测量；被取消的调用方可能收到部分结果，并应丢弃它。
- */
+/** 测量每个块在 textarea 中的 scrollTop 偏移量，支持 AbortSignal 取消。 */
 export async function measureBlockOffsets(
   content: string,
   sourceTextarea: HTMLTextAreaElement,
@@ -208,8 +195,6 @@ export async function measureBlockOffsets(
     if (lineIndex < lines.length - 1) measure.appendChild(document.createTextNode("\n"));
 
     if ((lineIndex + 1) % MIRROR_BUILD_YIELD_INTERVAL === 0) {
-      // Let huge mirror construction observe cancellation before attachment.\n    // 构建超大镜像时也要让出主线程，这样挂载前就能响应取消。
-      // 让超大镜像构建在挂载前有机会观察取消信号。
       await yieldToPendingWork();
       if (signal?.aborted) return [];
     }
@@ -228,8 +213,6 @@ export async function measureBlockOffsets(
       if (signal?.aborted) break;
 
       if ((index + 1) % MARKER_MEASURE_YIELD_INTERVAL === 0) {
-        // Long marker reads yield so AbortSignal changes can be observed.\n      // 长文档读取标记位置时分批让出主线程，才能及时发现 AbortSignal 已变化。
-        // 长时间读取标记时主动让出执行权，以便观察 AbortSignal 的变化。
         await yieldToPendingWork();
       }
     }
