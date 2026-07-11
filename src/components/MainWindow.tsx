@@ -36,6 +36,7 @@ import type {
   UpdateState,
 } from "../features/update/types";
 import { BackgroundLayer } from "./BackgroundLayer";
+import { POPUP_VIEWPORT_MARGIN, useViewportPopupPosition } from "./popupPosition";
 import { SettingsPanel } from "./SettingsPanel";
 import { SlidingButtonGroup } from "./SlidingButtonGroup";
 import {
@@ -376,6 +377,12 @@ export function MainWindow({
   const [categoryMenuClosing, setCategoryMenuClosing] = useState(false);
   const [categoryMenuConfirmDelete, setCategoryMenuConfirmDelete] = useState(false);
   const [categoryMenuHoverSuppressed, setCategoryMenuHoverSuppressed] = useState(false);
+  const { popupRef: noteMenuRef, popupPosition: noteMenuPosition } = useViewportPopupPosition(
+    noteMenu,
+    `${noteMenuMode}:${categories.length}`,
+  );
+  const { popupRef: categoryMenuRef, popupPosition: categoryMenuPosition } =
+    useViewportPopupPosition(categoryMenu, categoryMenuConfirmDelete);
   const contentRef = useRef<HTMLTextAreaElement>(null);
   const windowLabelRef = useRef("main");
   const previewScrollRef = useRef<HTMLDivElement>(null);
@@ -1447,16 +1454,11 @@ export function MainWindow({
     event.preventDefault();
     event.stopPropagation();
 
-    const menuWidth = 168;
-    const menuHeight = 76;
-    const x = Math.min(event.clientX, window.innerWidth - menuWidth - 4);
-    const y = Math.min(event.clientY, window.innerHeight - menuHeight - 4);
-
     setNoteMenuClosing(false);
     setHoveredId(noteId);
     setNoteMenu({
-      x: Math.max(4, x),
-      y: Math.max(4, y),
+      x: event.clientX,
+      y: event.clientY,
       noteId,
     });
   };
@@ -3065,8 +3067,14 @@ export function MainWindow({
       </div>
       {noteMenu && noteMenuTarget && (
         <div
-          className={`popup-menu fixed z-[9999] min-w-[168px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-hidden select-none ${noteMenuClosing ? "animate-menu-exit" : "animate-menu-enter"}`}
-          style={{ left: noteMenu.x, top: noteMenu.y }}
+          ref={noteMenuRef}
+          className={`popup-menu fixed z-[9999] min-w-[168px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-x-hidden overflow-y-auto select-none ${noteMenuClosing ? "animate-menu-exit" : "animate-menu-enter"}`}
+          style={{
+            left: noteMenuPosition?.x ?? noteMenu.x,
+            top: noteMenuPosition?.y ?? noteMenu.y,
+            maxWidth: `calc(100vw - ${POPUP_VIEWPORT_MARGIN * 2}px)`,
+            maxHeight: `calc(100vh - ${POPUP_VIEWPORT_MARGIN * 2}px)`,
+          }}
           onMouseDown={(event) => event.stopPropagation()}
         >
           {noteMenuMode === "main" ? (
@@ -3127,9 +3135,15 @@ export function MainWindow({
 
       {categoryMenu && (
         <div
-          className={`popup-menu fixed z-[9999] min-w-[140px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-hidden select-none ${categoryMenuClosing ? "animate-menu-exit" : "animate-menu-enter"}`}
+          ref={categoryMenuRef}
+          className={`popup-menu fixed z-[9999] min-w-[140px] py-1.5 bg-cloud/95 backdrop-blur-sm border border-paper-deep/50 rounded-lg overflow-x-hidden overflow-y-auto select-none ${categoryMenuClosing ? "animate-menu-exit" : "animate-menu-enter"}`}
           data-hover-suppressed={categoryMenuHoverSuppressed ? "" : undefined}
-          style={{ left: categoryMenu.x, top: categoryMenu.y }}
+          style={{
+            left: categoryMenuPosition?.x ?? categoryMenu.x,
+            top: categoryMenuPosition?.y ?? categoryMenu.y,
+            maxWidth: `calc(100vw - ${POPUP_VIEWPORT_MARGIN * 2}px)`,
+            maxHeight: `calc(100vh - ${POPUP_VIEWPORT_MARGIN * 2}px)`,
+          }}
           onMouseDown={(event) => event.stopPropagation()}
         >
           {categoryMenuConfirmDelete ? (
